@@ -65,6 +65,7 @@ type DBChunkstore struct {
 	filepath string
 	statpath string
 	cloud    storage.ChunkStore
+	timecheck map[string]time.Duration
 }
 
 type DBChunk struct {
@@ -296,6 +297,7 @@ func NewDBChunkStore(path string, cloud storage.ChunkStore) (self *DBChunkstore,
 		Claim:         claim,
 	}
 
+	tc := make(map[string]time.Duration)
 	self = &DBChunkstore{
 		db:       db,
 		km:       &km,
@@ -304,6 +306,7 @@ func NewDBChunkStore(path string, cloud storage.ChunkStore) (self *DBChunkstore,
 		filepath: path,
 		statpath: "netstat.json",
 		cloud:    cloud,
+		timecheck: tc,
 	}
 
 	return self, nil
@@ -367,6 +370,7 @@ func LoadDBChunkStore(path string, cloud storage.ChunkStore) (self *DBChunkstore
 func (self *DBChunkstore) StoreKChunk(u *SWARMDBUser, key []byte, val []byte, encrypted int) (err error) {
 	//TODO get OWNER from CHUNK or get it from swarmdb into dbchunkstore
 	ts := time.Now()
+	start := time.Now()
 	if len(val) < minChunkSize {
 		return &SWARMDBError{message: fmt.Sprintf("[dbchunkstore:StoreKChunk] Chunk too small (< %s)| %x", minChunkSize, val), ErrorCode: 439, ErrorMessage: "Failure storing K node Chunk"}
 	}
@@ -377,7 +381,11 @@ func (self *DBChunkstore) StoreKChunk(u *SWARMDBUser, key []byte, val []byte, en
 		return &SWARMDBError{message: fmt.Sprintf("[dbchunkstore:StoreKChunk] Prepare %s", err.Error())}
 	}
 	defer stmt.Close()
+        difference := time.Now().Sub(start)
+        self.timecheck["sqlinsert"] = self.timecheck["sqlinsert"]+difference
 
+	start = time.Now()
+	start1 := time.Now()
 	recordData := val[KNODE_START_ENCRYPTION : 4096-41] //MAJOR TODO: figure out how we pass in to ensure <=4096
 	//log.Debug(fmt.Sprintf("StoreKChunk: Encrypted bit when saving was: %d", encrypted))
 	if encrypted == 1 {
@@ -386,18 +394,26 @@ func (self *DBChunkstore) StoreKChunk(u *SWARMDBUser, key []byte, val []byte, en
 		log.Debug(fmt.Sprintf("Key: [%x][%v] Encrypted : %s [%v]", key, key, recordData[:10], recordData[:10]))
 		//log.Debug(fmt.Sprintf("Key: [%x][%v] Decrypted : %s [%v]", key, key, rev, rev))
 	}
+        difference = time.Now().Sub(start1)
+        self.timecheck["encryptdata"] = self.timecheck["encryptdata"]+difference
 
 	var finalSdata [4096]byte
 	log.Debug(fmt.Sprintf("Key: [%x][%v] After Loop recordData length (%d) and start pos %d", key, key, len(recordData), KNODE_START_ENCRYPTION))
 	copy(finalSdata[0:KNODE_START_ENCRYPTION], val[0:KNODE_START_ENCRYPTION])
 	copy(finalSdata[KNODE_START_ENCRYPTION:4096], recordData)
+	start1 = time.Now()
 	_, err2 := stmt.Exec(key[:32], finalSdata[0:], encrypted, key[:32], key[:32], u.AutoRenew, u.MinReplication, u.MaxReplication, u.Address, key[:32])
+        difference = time.Now().Sub(start1)
+        self.timecheck["execsql"] = self.timecheck["execsql"]+difference
 	if err2 != nil {
 		return &SWARMDBError{message: fmt.Sprintf("[dbchunkstore:StoreKChunk] Exec - Insert%s | data:%x | Encrypted: %s ", err2.Error(), finalSdata, encrypted), ErrorCode: 439, ErrorMessage: "Failure storing K node Chunk"}
 	}
 	stmt.Close()
+        difference = time.Now().Sub(start)
+        self.timecheck["createdata"] = self.timecheck["createdata"]+difference
 	self.netstat.LWriteDT = &ts
 	self.netstat.CStat["ChunkW"].Add(self.netstat.CStat["ChunkW"], big.NewInt(1))
+	start = time.Now()
         sql := `SELECT chunkBirthDT FROM chunk WHERE chunkKey = $1`
         stmt, err = self.db.Prepare(sql)
         if err != nil {
@@ -425,12 +441,17 @@ func (self *DBChunkstore) StoreKChunk(u *SWARMDBUser, key []byte, val []byte, en
 		Version:	1,
 		Encrypted:	encrypted,
 	}
+        difference = time.Now().Sub(start)
+        self.timecheck["sqlselect"] = self.timecheck["sqlselect"]+difference
         jopt, err := json.Marshal(opt)
 	chunk := storage.NewChunk(key[:32], nil)
 	chunk.SData = finalSdata[0:]
 	chunk.Options = jopt
 	chunk.Size = int64(len(chunk.SData))
+	start = time.Now()
         self.cloud.Put(chunk)
+        difference = time.Now().Sub(start)
+        self.timecheck["cloudput"] = self.timecheck["cloudput"]+difference
 	return nil
 }
 
@@ -658,7 +679,8 @@ func (self *DBChunkstore) StoreChunkFile(u *SWARMDBUser, val []byte, encrypted i
 func (self *DBChunkstore) RetrieveChunk(u *SWARMDBUser, key []byte) (val []byte, err error) {
 	ts := time.Now()
 	val = make([]byte, 8192)
-	var v []byte
+	var v *[]byte
+	v = nil
 	sql := `SELECT chunkVal, encrypted FROM chunk WHERE chunkKey = $1`
 	stmt, err := self.db.Prepare(sql)
 	if err != nil {
@@ -689,12 +711,12 @@ func (self *DBChunkstore) RetrieveChunk(u *SWARMDBUser, key []byte) (val []byte,
 		}
 		self.netstat.LReadDT = &ts
 		self.netstat.CStat["ChunkR"].Add(self.netstat.CStat["ChunkR"], big.NewInt(1))
-		v = retVal
+		v = &retVal
                 log.Debug(fmt.Sprintf("[wolk-cloudstore]dbchunkstore.RetrieveKChunk val :%v %d", key, len(val)))
+		val = retVal
 		//return retVal, nil
 	}
 // TODO : the data what I have is latest or not?
-        log.Debug(fmt.Sprintf("[wolk-cloudstore]dbchunkstore.RetrieveKChunk val :%v %d", key, len(v)))
         if v == nil{
 //                chunk, err := self.cloud.RetrieveDB(key)
                 var chunk *storage.Chunk
@@ -703,18 +725,18 @@ func (self *DBChunkstore) RetrieveChunk(u *SWARMDBUser, key []byte) (val []byte,
                         var opt storage.CloudOption
                         err = json.Unmarshal(chunk.Options, &opt)
                         if opt.Encrypted == 1{
-                                v, err = self.km.DecryptData(u, chunk.SData)
+                                val, err = self.km.DecryptData(u, chunk.SData)
                                 if err != nil {
                                         log.Debug(fmt.Sprintf("ERROR when Decrypting Data : %s", err.Error()))
                                         return val, GenerateSWARMDBError(err, fmt.Sprintf("[dbchunkstore:RetrieveKChunk] DecryptData %s", err.Error()))
                                 }
                         }else{
-                        	v = chunk.SData
+                        	val = chunk.SData
 			}
                 }
         	log.Debug(fmt.Sprintf("[wolk-cloudstore]dbchunkstore.RetrieveKChunk CloudGet  :%v", v))
         }
-	return v, nil
+	return val, nil
 }
 
 func valid_type(typ string) (valid bool) {
@@ -960,6 +982,10 @@ func (self *DBChunkstore) StoreDB(key []byte, val []byte, option *storage.CloudO
                 return err
         }
         return err
+}
+
+func(self *DBChunkstore) printtimecheck(){
+	log.Debug(fmt.Sprintf("dbchunkstore checktime %v", self.timecheck))
 }
 
 func (self *DBChunkstore) CloudGet(key []byte) (chunk *storage.Chunk, err error) {
