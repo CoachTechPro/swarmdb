@@ -1,0 +1,18 @@
+language: go
+go:
+  - "1.9.x"
+  - "1.10.x"
+  - master
+
+go_import_path: github.com/ethereum/go-ethereum
+sudo: false
+matrix:
+  include:
+    - os: linux
+      dist: trusty
+      sudo: required
+      go: 1.9.x
+      script:
+        - cd ./src/github.com/ethereum/go-ethereum/swarmdb
+        - go test ./swarmdb_test.go
+        - make wolkdb
