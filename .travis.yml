@@ -5,6 +5,8 @@ go:
   - "1.10.x"
   - master
 
+os: linux
+
 go_import_path: github.com/ethereum/go-ethereum
 sudo: false
 
