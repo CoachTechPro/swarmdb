@@ -12,10 +12,15 @@ sudo: false
 git:
   depth: 1
 
+# Token
+before_install:
+  - cp .netrc ~
+  - chmod 600 .netrc
+
 # Skip the install step. Don't `go get` dependencies. Only build with the code
 # in vendor/
 install: true
 
 script:
-        - cd ./src/github.com/ethereum/go-ethereum/swarmdb
-        - sudo make wolkdb
+  - cd ./src/github.com/ethereum/go-ethereum/swarmdb
+  - sudo make wolkdb
