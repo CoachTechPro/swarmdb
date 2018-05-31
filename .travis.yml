@@ -1,9 +1,6 @@
 language: go
 go:
-  - "1.8.x"
   - "1.9.x"
-  - "1.10.x"
-  - master
 
 os: linux
 
@@ -26,4 +23,5 @@ install: true
 
 script:
   - cd src/github.com/ethereum/go-ethereum/swarmdb
+  - go get github.com/ethereum/go-ethereum/crypto  
   - make wolkdb
