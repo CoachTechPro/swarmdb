@@ -7,7 +7,6 @@ go:
 
 os: linux
 
-go_import_path: src/github.com/ethereum/go-ethereum
 go_import_path: src/github.com/ethereum/go-ethereum/build/_workspace/pkg/linux_amd64/github.com/ethereum/go-ethereum
 sudo: false
 
