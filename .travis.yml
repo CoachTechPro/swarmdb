@@ -7,7 +7,8 @@ go:
 
 os: linux
 
-go_import_path: github.com/ethereum/go-ethereum
+go_import_path: src/github.com/ethereum/go-ethereum
+go_import_path: src/github.com/ethereum/go-ethereum/build/_workspace/pkg/linux_amd64/github.com/ethereum/go-ethereum
 sudo: false
 
 # Only clone the most recent commit.
@@ -24,5 +25,5 @@ before_install:
 install: true
 
 script:
-  - cd ./src/github.com/ethereum/go-ethereum/swarmdb
+  - cd src/github.com/ethereum/go-ethereum/swarmdb
   - make wolkdb
