@@ -13,17 +13,17 @@ git:
   depth: 1
 
 # Token
-before_install:
-  - cp .netrc ~
-  - chmod 600 .netrc
+#before_install:
+#  - cp .netrc ~
+#  - chmod 600 .netrc
 
 # Skip the install step. Don't `go get` dependencies. Only build with the code
 # in vendor/
-install: true
+#install: true
 
 script:
   - cd src/github.com/ethereum/go-ethereum/swarmdb
-  - go get -v github.com/ethereum/go-ethereum/crypto  
+#  - go get -v github.com/ethereum/go-ethereum/crypto  
 #  - go get github.com/ethereum/go-ethereum/swarmdb
 #  - go get github.com/ethereum/go-ethereum/swarmdb/swarmdbcommon  
   - make wolkdb
